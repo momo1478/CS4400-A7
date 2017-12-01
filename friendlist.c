@@ -222,7 +222,7 @@ static void get_friends(int fd, dictionary_t *query)
   {
   	clienterror(fd, "GET", "400", "Bad Request",
                   "Invalid user field input");
-	return;
+	return; 
   }
 
   dictionary_t *friendsOfU = (dictionary_t*)dictionary_get(mdic,user);
