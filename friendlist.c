@@ -13,6 +13,7 @@
 #include "more_string.h"
 
 static void doit(int fd);
+static void *go_doit(void *connfdp);
 static dictionary_t *read_requesthdrs(rio_t *rp);
 static void read_postquery(rio_t *rp, dictionary_t *headers, dictionary_t *d);
 static void clienterror(int fd, char *cause, char *errnum, 
@@ -24,8 +25,7 @@ static void serve_request(int fd, char* body);
 static void get_friends(int fd, dictionary_t *query);
 static void post_befriend(int fd, dictionary_t *query);
 static void post_unfriend(int fd, dictionary_t *query);
-
-
+static void post_introduce(int fd, dictionary_t *query);
 
 dictionary_t* mdic;
 
@@ -46,18 +46,18 @@ int main(int argc, char **argv)
   mdic = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
 
   /* Test CODE */
-  //dictionary_t* newA = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
-  //dictionary_t* newM = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
-  //dictionary_set(mdic,"me", newA);
-  //dictionary_set(newA,"alice", NULL);
+  dictionary_t* newA = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
+  dictionary_t* newM = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
+  dictionary_set(mdic,"me", newA);
+  dictionary_set(newA,"alice", NULL);
 
-  //dictionary_set(mdic,"alice", newM);
-  //dictionary_set(newM,"me",NULL);
+  dictionary_set(mdic,"alice", newM);
+  dictionary_set(newM,"me",NULL);
 
   /* Don't kill the server if there's an error, because
      we want to survive errors due to a client. But we
      do want to report errors. */
-  exit_on_error(0);
+  //exit_on_error(0);
 
   /* Also, don't stop on broken connections: */
   Signal(SIGPIPE, SIG_IGN);
@@ -69,10 +69,25 @@ int main(int argc, char **argv)
       Getnameinfo((SA *) &clientaddr, clientlen, hostname, MAXLINE, 
                   port, MAXLINE, 0);
       printf("Accepted connection from (%s, %s)\n", hostname, port);
-      doit(connfd);
-      Close(connfd);
+      /* doit(connfd); */
+      /* Close(connfd); */
+      int *connfdp;
+      pthread_t th;
+      connfdp = malloc(sizeof(int));
+      *connfdp = connfd;
+      Pthread_create(&th, NULL, go_doit, connfdp);
+      Pthread_detach(th);
     }
   }
+}
+
+void *go_doit(void *connfdp)
+{
+   int connfd = *(int *)connfdp;
+   free(connfdp);
+   doit(connfd);
+   //Close(connfd);
+   return NULL;
 }
 
 /*
@@ -94,6 +109,7 @@ void doit(int fd)
   {
     clienterror(fd, method, "400", "Bad Request",
                 "Friendlist did not recognize the request");
+    return;
   } 
   else 
   {
@@ -102,12 +118,14 @@ void doit(int fd)
     {
       clienterror(fd, version, "501", "Not Implemented",
                   "Friendlist does not implement that version");
+      return;
     } 
     else if (strcasecmp(method, "GET")
                && strcasecmp(method, "POST")) 
     {
       clienterror(fd, method, "501", "Not Implemented",
                   "Friendlist does not implement that method");
+      return;
     } 
     else 
     {
@@ -143,6 +161,8 @@ void doit(int fd)
     free(method);
     free(uri);
     free(version);
+
+    Close(fd);
   }
 }
 
@@ -198,6 +218,7 @@ static char *ok_header(size_t len, const char *content_type)
                           "Content-length: ", len_str = to_string(len), "\r\n",
                           "Content-type: ", content_type, "\r\n\r\n",
                           NULL);
+  
   free(len_str);
 
   return header;
@@ -207,6 +228,43 @@ static char *ok_header(size_t len, const char *content_type)
  * serve_request - example request handler
  */
 static void get_friends(int fd, dictionary_t *query)
+{
+  char *body;
+
+  if(dictionary_count(query) != 1)
+  {
+  	clienterror(fd, "GET", "400", "Bad Request",
+                  "/friends requires 1 user.");
+	return;
+  }
+
+  const char* user = dictionary_get(query,"user");
+  if(user == NULL)
+  {
+  	clienterror(fd, "GET", "400", "Bad Request",
+                  "Invalid user field input");
+	return; 
+  }
+
+  dictionary_t *friendsOfU = (dictionary_t*)dictionary_get(mdic,user);
+  if(friendsOfU == NULL)
+  {
+    body = "";
+    serve_request(fd, body);
+    //clienterror(fd, "GET", "400", "Bad Request",
+    //           "User does not exist/Could not find user.");
+	return;	
+  }
+  const char** allfriendNames = dictionary_keys(friendsOfU);
+  print_stringdictionary(friendsOfU);
+  
+  body = join_strings(allfriendNames,'\n');
+
+  //Send response back to client.
+  serve_request(fd, body); 
+}
+
+static void post_introduce(int fd, dictionary_t *query)
 {
   char *body;
 
@@ -375,7 +433,6 @@ static void post_unfriend(int fd, dictionary_t *query)
 	//<user> is not friends with new friend?
 	dictionary_remove(userDic,enemies[i]);
   
-
 	//new friend is not registered in master dictionary?
   	dictionary_t* enemyFriendSet = (dictionary_t*)dictionary_get(mdic,enemies[i]);
   	if(enemyFriendSet != NULL)
@@ -416,8 +473,6 @@ static void serve_request(int fd, char* body)
 
   /* Send response body to client */
   Rio_writen(fd, body, len);
-
-  free(body);
 }
 
 /*
