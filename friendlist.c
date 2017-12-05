@@ -28,6 +28,7 @@ static void post_unfriend(int fd, dictionary_t *query);
 static void post_introduce(int fd, dictionary_t *query);
 
 dictionary_t* mdic;
+pthread_mutex_t lock;
 
 int main(int argc, char **argv) 
 {
@@ -35,13 +36,14 @@ int main(int argc, char **argv)
   char hostname[MAXLINE], port[MAXLINE];
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
-
+  
   /* Check command line args */
   if (argc != 2) {
     fprintf(stderr, "usage: %s <port>\n", argv[0]);
     exit(1);
   }
 
+  pthread_mutex_init(&lock, NULL);
   listenfd = Open_listenfd(argv[1]);
   mdic = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
 
@@ -145,13 +147,29 @@ void doit(int fd)
          nothing: */
 
       if (starts_with("/friends", uri))
+      {
+        pthread_mutex_lock(&lock);
         get_friends(fd,query);
+        pthread_mutex_unlock(&lock);
+      }
       else if (starts_with("/befriend", uri))
+      {
+        pthread_mutex_lock(&lock);
       	post_befriend(fd,query);
+        pthread_mutex_unlock(&lock);
+      }
       else if (starts_with("/unfriend", uri))
+      {
+        pthread_mutex_lock(&lock);
       	post_unfriend(fd,query);
+        pthread_mutex_unlock(&lock);
+      }
       else if (starts_with("/introduce", uri))
+      {
+        pthread_mutex_lock(&lock);
       	post_introduce(fd,query);
+        pthread_mutex_unlock(&lock);
+      }
 
 
       /* Clean up */
