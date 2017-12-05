@@ -57,7 +57,7 @@ int main(int argc, char **argv)
   /* Don't kill the server if there's an error, because
      we want to survive errors due to a client. But we
      do want to report errors. */
-  //exit_on_error(0);
+  exit_on_error(0);
 
   /* Also, don't stop on broken connections: */
   Signal(SIGPIPE, SIG_IGN);
@@ -72,12 +72,14 @@ int main(int argc, char **argv)
       printf("Accepted connection from (%s, %s)\n", hostname, port);
       /* doit(connfd); */
       /* Close(connfd); */
-      int *connfdp;
-      pthread_t th;
-      connfdp = malloc(sizeof(int));
-      *connfdp = connfd;
-      Pthread_create(&th, NULL, go_doit, connfdp);
-      Pthread_detach(th);
+      {
+        int *connfdp;
+        pthread_t th;
+        connfdp = malloc(sizeof(int));
+        *connfdp = connfd;
+        Pthread_create(&th, NULL, go_doit, connfdp);
+        Pthread_detach(th);
+      }
     }
   }
 }
@@ -162,6 +164,7 @@ void doit(int fd)
     free(uri);
     free(version);
   }
+  //Close(fd);
 }
 
 /*
@@ -337,20 +340,12 @@ static void post_introduce(int fd, dictionary_t *query)
     }
     else
     {
-      //size_t n = 0;
-      //size_t bytes_read = 0;
-    
       char rec_buf[MAXLINE];
       dictionary_t *headers = read_requesthdrs(&rio);
       char *len_str = dictionary_get(headers, "Content-length");
+
       free_dictionary(headers);
       int len = (len_str ? atoi(len_str) : 0);
-      // while(bytes_read < len)
-      // {
-      //   n = Rio_readlineb(&rio, buf, MAXLINE);
-      //   printf("ArmNHammer: %s\n",buf);
-      //   bytes_read+=n;
-      // }
       print_stringdictionary(headers);
       printf("len = %d\n", len);
       
