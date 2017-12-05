@@ -30,6 +30,8 @@ static void post_introduce(int fd, dictionary_t *query);
 dictionary_t* mdic;
 pthread_mutex_t lock;
 
+
+
 int main(int argc, char **argv) 
 {
   int listenfd, connfd;
@@ -166,9 +168,9 @@ void doit(int fd)
       }
       else if (starts_with("/introduce", uri))
       {
-        pthread_mutex_lock(&lock);
+        //pthread_mutex_lock(&lock);
       	post_introduce(fd,query);
-        pthread_mutex_unlock(&lock);
+        //pthread_mutex_unlock(&lock);
       }
 
 
@@ -318,7 +320,7 @@ static void post_introduce(int fd, dictionary_t *query)
   char buffer[MAXBUF];
   //get friends of <friend> from other server.
   int connfd = Open_clientfd(host, port);
-  sprintf(buffer, "GET /friends?user=%s HTTP/1.1\r\n\r\n",query_encode(friend));
+  sprintf(buffer, "GET /friends?user=%s HTTP/1.1\r\n\r\n", query_encode(friend));
 
   Rio_writen(connfd, buffer, strlen(buffer));
   Shutdown(connfd,SHUT_WR);
@@ -342,10 +344,6 @@ static void post_introduce(int fd, dictionary_t *query)
   }
   else 
   {
-
-  /* /////////////////////////////////////////////////////// */
-  /* /////////////////////////////////////////////////////// */
-  /* /////////////////////////////////////////////////////// */
     if (strcasecmp(version, "HTTP/1.0") && strcasecmp(version, "HTTP/1.1")) 
     {
       clienterror(fd, version, "501", "Not Implemented",
@@ -366,9 +364,9 @@ static void post_introduce(int fd, dictionary_t *query)
       int len = (len_str ? atoi(len_str) : 0);
       print_stringdictionary(headers);
       printf("len = %d\n", len);
-      
       Rio_readnb(&rio, rec_buf, MAXLINE);
 
+      pthread_mutex_lock(&lock);
       //Get set of friends of <user>
       dictionary_t *userDic = dictionary_get(mdic,user);
       if(userDic == NULL)
@@ -423,6 +421,7 @@ static void post_introduce(int fd, dictionary_t *query)
 
       body = join_strings(friendNames,'\n');
 
+      pthread_mutex_unlock(&lock);
       //Respond back to client
       serve_request(fd, body);
 
