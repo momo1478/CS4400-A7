@@ -317,6 +317,11 @@ static void post_introduce(int fd, dictionary_t *query)
     return;
   }
 
+  if(strcasecmp("%%one%%",user))
+  {
+    printf("HIIIYA\n");
+  }
+
   char buffer[MAXBUF];
   //get friends of <friend> from other server.
   int connfd = Open_clientfd(host, port);
@@ -356,76 +361,87 @@ static void post_introduce(int fd, dictionary_t *query)
     }
     else
     {
-      char rec_buf[MAXLINE];
+      
       dictionary_t *headers = read_requesthdrs(&rio);
       char *len_str = dictionary_get(headers, "Content-length");
-
-      free_dictionary(headers);
+      
       int len = (len_str ? atoi(len_str) : 0);
-      print_stringdictionary(headers);
+      char rec_buf[len];
+      
       printf("len = %d\n", len);
-      Rio_readnb(&rio, rec_buf, MAXLINE);
-
-      pthread_mutex_lock(&lock);
-      //Get set of friends of <user>
-      dictionary_t *userDic = dictionary_get(mdic,user);
-      if(userDic == NULL)
+      if(len <= 0)
       {
-        printf("New Dictionary!\n");
-        userDic = make_dictionary(COMPARE_CASE_SENS,NULL);
-        dictionary_set(mdic, user, userDic);
+        clienterror(fd, "GET", "400", "Bad Request",
+        "No friends recieved");
       }
+      else
+      {
+        print_stringdictionary(headers);
+        //free_dictionary(headers);
+        Rio_readnb(&rio, rec_buf, len);
+        rec_buf[len] = 0;
+
+        pthread_mutex_lock(&lock);
+      //Get set of friends of <user>
+        dictionary_t *userDic = dictionary_get(mdic,user);
+        if(userDic == NULL)
+        {
+          printf("New Dictionary!\n");
+          userDic = make_dictionary(COMPARE_CASE_SENS,NULL);
+          dictionary_set(mdic, user, userDic);
+        }
 
       //Get all friends of <user> as a string.
-      char** newFriends = split_string(rec_buf, '\n');
+        char** newFriends = split_string(rec_buf, '\n');
       //Add new friends!
-      int i;
-      for (i = 0; newFriends[i] != NULL; ++i)
-      {
-        if(strcmp(newFriends[i],user) == 0)
-          continue;
-        
+        int i;
+        for (i = 0; newFriends[i] != NULL; ++i)
+        {
+          if(strcmp(newFriends[i],user) == 0)
+            continue;
+
             //<user> registered in the master dictionary?
-        dictionary_t* newF = (dictionary_t*)dictionary_get(mdic,user);
-        if(newF == NULL)
-        {
-          newF = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
-          dictionary_set(mdic, user, newF);
-        }
+          dictionary_t* newF = (dictionary_t*)dictionary_get(mdic,user);
+          if(newF == NULL)
+          {
+            newF = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
+            dictionary_set(mdic, user, newF);
+          }
     	//<user> is not friends with new friend?
-        if(dictionary_get(newF,newFriends[i]) == NULL)
-        {
-          dictionary_set(newF,newFriends[i], NULL);
-        }
+          if(dictionary_get(newF,newFriends[i]) == NULL)
+          {
+            dictionary_set(newF,newFriends[i], NULL);
+          }
 
     	//new friend is not registered in master dictionary?
-        dictionary_t* newFR = (dictionary_t*)dictionary_get(mdic,newFriends[i]);
-        if(newFR == NULL)
-        {
-          newFR = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
-          dictionary_set(mdic, newFriends[i], newFR);
-        }
+          dictionary_t* newFR = (dictionary_t*)dictionary_get(mdic,newFriends[i]);
+          if(newFR == NULL)
+          {
+            newFR = (dictionary_t*)make_dictionary(COMPARE_CASE_SENS,free);
+            dictionary_set(mdic, newFriends[i], newFR);
+          }
     	//new friend is not friends with <user>?
-        if(dictionary_get(newFR,user) == NULL)
-        {
-          dictionary_set(newFR,user, NULL);
+          if(dictionary_get(newFR,user) == NULL)
+          {
+            dictionary_set(newFR,user, NULL);
+          }
+          free(newFriends[i]);
         }
-        free(newFriends[i]);
-      }
-      free(newFriends);
+        free(newFriends);
 
       //print_friendmap();
-      
+
       //Respond with new friends list.
-      const char** friendNames = dictionary_keys(userDic);
+        const char** friendNames = dictionary_keys(userDic);
 
-      body = join_strings(friendNames,'\n');
+        body = join_strings(friendNames,'\n');
 
-      pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&lock);
       //Respond back to client
-      serve_request(fd, body);
+        serve_request(fd, body);
 
-      free(body);
+        free(body);
+      }
     }
    free(version);
    free(status);
@@ -515,7 +531,7 @@ static void post_befriend(int fd, dictionary_t *query)
     }
   }
 
-  print_friendmap();
+  //print_friendmap();
   
   //Respond with new friends list.
   userDic = (dictionary_t*)dictionary_get(mdic,user);
